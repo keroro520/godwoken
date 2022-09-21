@@ -283,3 +283,58 @@ impl packed::AllowedTypeHash {
             .build()
     }
 }
+
+// Layout of Timepoint:
+//   - the highest 1 bit represent whether the time point is block-number-based
+//     or timestamp-based
+//   - the rest 63 bits represent the value of time point
+#[repr(transparent)]
+pub struct Timepoint(u64);
+
+impl Timepoint {
+    const MASK: u64 = 1 << 63;
+
+    pub fn is_block_number_based(&self) -> bool {
+        (Self::MASK & self.0) == 0
+    }
+
+    pub fn is_timestamp_based(&self) -> bool {
+        !self.is_block_number_based()
+    }
+
+    pub fn value(&self) -> u64 {
+        (!Self::MASK) & self.0
+    }
+
+    pub fn from_full_value(full_value: u64) -> Self {
+        Self(full_value)
+    }
+
+    pub fn from_block_number(block_number: u64) -> Self {
+        debug_assert!(block_number < Self::MASK);
+        Self(block_number)
+    }
+
+    pub fn from_timestamp(timestamp: u64) -> Self {
+        debug_assert!(timestamp < Self::MASK);
+        Self(Self::MASK | timestamp)
+    }
+}
+
+mod tests {
+    #[test]
+    fn test_timepoint_from_block_number() {
+        let block_number: u64 = 123;
+        let timepoint = super::Timepoint::from_block_number(block_number);
+        assert!(timepoint.is_block_number_based());
+        assert_eq!(timepoint.value(), block_number);
+    }
+
+    #[test]
+    fn test_timepoint_from_timestamp() {
+        let timestamp: u64 = 1557311768;
+        let timepoint = super::Timepoint::from_timestamp(timestamp);
+        assert!(timepoint.is_timestamp_based());
+        assert_eq!(timepoint.value(), timestamp);
+    }
+}
