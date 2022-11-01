@@ -88,6 +88,7 @@ fn run_contract_get_result<S: State + CodeStore>(
     let rollup_ctx = RollupContext {
         rollup_config: rollup_config.clone(),
         rollup_script_hash: [42u8; 32].into(),
+        ..Default::default()
     };
     let generator = Generator::new(
         backend_manage,

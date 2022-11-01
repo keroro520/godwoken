@@ -18,6 +18,7 @@ use gw_types::{
     prelude::*,
 };
 
+use gw_types::offchain::CompatibleFinalizedTimepoint;
 use std::{
     collections::HashMap,
     time::{SystemTime, UNIX_EPOCH},
@@ -224,13 +225,16 @@ pub fn unlock_to_owner(
     };
 
     let global_state = global_state_from_slice(&rollup_cell.data)?;
-    let last_finalized_block_number: u64 = global_state.last_finalized_block_number().unpack();
+    let compatible_finalized_timepoint = CompatibleFinalizedTimepoint::from_global_state(
+        &global_state,
+        rollup_context.rollup_config.finality_blocks().unpack(),
+    );
     let l1_sudt_script_hash = rollup_context.rollup_config.l1_sudt_script_type_hash();
     for withdrawal_cell in withdrawal_cells {
         // Double check
         if let Err(err) = gw_rpc_client::withdrawal::verify_unlockable_to_owner(
             &withdrawal_cell,
-            last_finalized_block_number,
+            &compatible_finalized_timepoint,
             &l1_sudt_script_hash,
         ) {
             log::error!("[unlock withdrawal] unexpected verify failed {}", err);
@@ -301,8 +305,10 @@ mod test {
 
     use gw_common::{h256_ext::H256Ext, H256};
     use gw_config::ContractsCellDep;
-    use gw_types::core::{DepType, ScriptHashType};
-    use gw_types::offchain::{CellInfo, CollectedCustodianCells, InputCellInfo};
+    use gw_types::core::{DepType, ScriptHashType, Timepoint};
+    use gw_types::offchain::{
+        CellInfo, CollectedCustodianCells, CompatibleFinalizedTimepoint, InputCellInfo,
+    };
     use gw_types::packed::{
         CellDep, CellInput, CellOutput, GlobalState, L2Block, OutPoint, RawL2Block,
         RawWithdrawalRequest, Script, UnlockWithdrawalViaFinalize, UnlockWithdrawalWitness,
@@ -324,6 +330,7 @@ mod test {
                 .withdrawal_script_type_hash(H256::from_u32(100).pack())
                 .finality_blocks(1u64.pack())
                 .build(),
+            ..Default::default()
         };
 
         let sudt_script = Script::new_builder()
@@ -386,16 +393,17 @@ mod test {
         .unwrap();
         let (output, data) = generated.unwrap().outputs.first().unwrap().to_owned();
 
+        let block_timepoint = Timepoint::from_block_number(block.raw().number().unpack());
         let (expected_output, expected_data) = gw_generator::utils::build_withdrawal_cell_output(
             &rollup_context,
             &withdrawal_extra,
             &block.hash().into(),
-            block.raw().number().unpack(),
+            &block_timepoint,
             Some(sudt_script.clone()),
         )
         .unwrap();
 
-        assert_eq!(expected_output.as_slice(), output.as_slice());
+        assert_eq!(expected_output.to_string(), output.to_string());
         assert_eq!(expected_data, data);
 
         // Check our generate withdrawal can be queried and unlocked to owner
@@ -404,11 +412,14 @@ mod test {
             data,
             ..Default::default()
         };
-        let last_finalized_block_number =
-            block.raw().number().unpack() + rollup_context.rollup_config.finality_blocks().unpack();
+        // Make sure the withdrawal is finalized for `global_state`
+        let compatible_finalized_timepoint = CompatibleFinalizedTimepoint::from_block_number(
+            block.raw().number().unpack(),
+            rollup_context.rollup_config.finality_blocks().unpack(),
+        );
         gw_rpc_client::withdrawal::verify_unlockable_to_owner(
             &info,
-            last_finalized_block_number,
+            &compatible_finalized_timepoint,
             &sudt_script.code_hash(),
         )
         .expect("pass verification");
@@ -417,9 +428,9 @@ mod test {
     #[test]
     fn test_unlock_to_owner() {
         // Output should only change lock to owner lock
-        let last_finalized_block_number = 100u64;
+        let last_finalized_timepoint = Timepoint::from_block_number(100);
         let global_state = GlobalState::new_builder()
-            .last_finalized_block_number(last_finalized_block_number.pack())
+            .last_finalized_block_number(last_finalized_timepoint.full_value().pack())
             .build();
 
         let rollup_type = Script::new_builder()
@@ -449,6 +460,7 @@ mod test {
                 .l1_sudt_script_type_hash(sudt_script.code_hash())
                 .finality_blocks(1u64.pack())
                 .build(),
+            ..Default::default()
         };
 
         let contracts_dep = {
@@ -481,7 +493,7 @@ mod test {
         let withdrawal_without_owner_lock = {
             let lock_args = WithdrawalLockArgs::new_builder()
                 .owner_lock_hash(owner_lock.hash().pack())
-                .withdrawal_block_number((last_finalized_block_number - 1).pack())
+                .withdrawal_block_number(last_finalized_timepoint.full_value().pack())
                 .build();
 
             let mut args = rollup_type.hash().to_vec();
@@ -497,7 +509,7 @@ mod test {
         let withdrawal_with_owner_lock = {
             let lock_args = WithdrawalLockArgs::new_builder()
                 .owner_lock_hash(owner_lock.hash().pack())
-                .withdrawal_block_number((last_finalized_block_number - 1).pack())
+                .withdrawal_block_number(last_finalized_timepoint.full_value().pack())
                 .build();
 
             let mut args = rollup_type.hash().to_vec();

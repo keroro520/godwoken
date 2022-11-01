@@ -52,6 +52,7 @@ pub fn build_genesis_from_store(
             rollup_script_hash.into()
         },
         rollup_config: config.rollup_config.clone().into(),
+        ..Default::default()
     };
     // initialize store
     db.set_block_smt_root(H256::zero())?;

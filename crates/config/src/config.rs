@@ -25,6 +25,8 @@ pub struct Config {
     #[serde(default)]
     pub contract_log_config: ContractLogConfig,
     pub backend_switches: Vec<BackendSwitchConfig>,
+    #[serde(default)]
+    pub fork_blocks: ForkBlocksConfig,
     pub genesis: GenesisConfig,
     pub chain: ChainConfig,
     pub rpc_client: RPCClientConfig,
@@ -254,6 +256,17 @@ pub struct BackendConfig {
     pub generator_path: PathBuf,
     pub validator_script_type_hash: H256,
     pub backend_type: BackendType,
+}
+
+/// Hard-fork changes and activation heights.
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForkBlocksConfig {
+    /// Use L1 timestamp to check finality
+    ///
+    /// See also https://talk.nervos.org/t/optimize-godwoken-finality-and-on-chain-cost/6739
+    ///
+    /// NOTE: By applying this change, we will bump global_state.version from 1 to 2.
+    pub timestamp_based_finality: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

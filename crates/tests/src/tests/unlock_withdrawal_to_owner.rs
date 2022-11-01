@@ -25,9 +25,10 @@ use gw_common::sparse_merkle_tree::default_store::DefaultStore;
 use gw_common::H256;
 use gw_config::ContractsCellDep;
 use gw_types::bytes::Bytes;
-use gw_types::core::{AllowedEoaType, DepType, ScriptHashType};
+use gw_types::core::{AllowedEoaType, DepType, ScriptHashType, Timepoint};
 use gw_types::offchain::{
-    CellInfo, CollectedCustodianCells, FinalizedCustodianCapacity, InputCellInfo, RollupContext,
+    CellInfo, CollectedCustodianCells, CompatibleFinalizedTimepoint, FinalizedCustodianCapacity,
+    InputCellInfo, RollupContext,
 };
 use gw_types::packed::{
     self, AllowedTypeHash, CellDep, CellInput, CellOutput, CustodianLockArgs, DepositRequest,
@@ -130,9 +131,9 @@ async fn test_build_unlock_to_owner_tx() {
         data: rollup_config.as_bytes(),
     };
 
-    let last_finalized_block_number = 100u64;
+    let last_finalized_timepoint = Timepoint::from_block_number(100);
     let global_state = GlobalState::new_builder()
-        .last_finalized_block_number(last_finalized_block_number.pack())
+        .last_finalized_block_number(last_finalized_timepoint.full_value().pack())
         .rollup_config_hash(rollup_config.hash().pack())
         .build();
 
@@ -167,7 +168,8 @@ async fn test_build_unlock_to_owner_tx() {
         setup_chain_with_config(rollup_type_script.clone(), rollup_config.clone()).await;
     let rollup_context = RollupContext {
         rollup_script_hash,
-        rollup_config,
+        rollup_config: rollup_config.clone(),
+        ..Default::default()
     };
 
     let contracts_dep = ContractsCellDep {
@@ -369,9 +371,10 @@ async fn test_build_unlock_to_owner_tx() {
         }
     };
     let output_stake = {
-        let block_number = withdrawal_block_result.block.raw().number();
+        let stake_timepoint =
+            Timepoint::from_block_number(withdrawal_block_result.block.raw().number().unpack());
         let stake_lock_args = StakeLockArgs::new_builder()
-            .stake_block_number(block_number)
+            .stake_block_number(stake_timepoint.full_value().pack())
             .build();
 
         let mut lock_args = rollup_script_hash.as_slice().to_vec();
@@ -523,13 +526,16 @@ async fn test_build_unlock_to_owner_tx() {
     verify_tx(tx_with_context, 7000_0000u64).expect("pass");
 
     // Simulate rpc client filter no owner lock withdrawal cells
-    let last_finalized_block_number = withdrawal_block_result.block.raw().number().unpack();
+    let compatible_finalized_timepoint = CompatibleFinalizedTimepoint::from_block_number(
+        withdrawal_block_result.block.raw().number().unpack(),
+        rollup_config.finality_blocks().unpack(),
+    );
     let unlockable_random_withdrawals: Vec<_> = random_withdrawal_cells
         .into_iter()
         .filter(|cell| {
             gw_rpc_client::withdrawal::verify_unlockable_to_owner(
                 cell,
-                last_finalized_block_number,
+                &compatible_finalized_timepoint,
                 &rollup_context.rollup_config.l1_sudt_script_type_hash(),
             )
             .is_ok()
@@ -631,9 +637,10 @@ async fn test_build_unlock_to_owner_tx() {
     let output_rollup_cell = (rollup_cell.output, block_result.global_state.as_bytes());
 
     let output_stake = {
-        let block_number = block_result.block.raw().number();
+        let stake_timepoint =
+            Timepoint::from_block_number(block_result.block.raw().number().unpack());
         let stake_lock_args = StakeLockArgs::new_builder()
-            .stake_block_number(block_number)
+            .stake_block_number(stake_timepoint.full_value().pack())
             .build();
 
         let mut lock_args = rollup_script_hash.as_slice().to_vec();
@@ -761,7 +768,7 @@ impl BuildUnlockWithdrawalToOwner for DummyUnlocker {
 
     async fn query_unlockable_withdrawals(
         &self,
-        _last_finalized_block_number: u64,
+        _last_finalized_timepoint: &CompatibleFinalizedTimepoint,
         _unlocked: &HashSet<OutPoint>,
     ) -> anyhow::Result<Vec<CellInfo>> {
         Ok(self.withdrawals.clone())

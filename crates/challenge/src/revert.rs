@@ -5,7 +5,7 @@ use ckb_types::prelude::Reader;
 use ckb_types::prelude::{Builder, Entity};
 use gw_common::smt::Blake2bHasher;
 use gw_common::H256;
-use gw_types::core::Status;
+use gw_types::core::{Status, Timepoint};
 use gw_types::offchain::{CellInfo, RollupContext};
 use gw_types::packed::BlockMerkleState;
 use gw_types::packed::ChallengeLockArgsReader;
@@ -19,6 +19,7 @@ use gw_types::prelude::Unpack;
 use gw_types::{bytes::Bytes, prelude::Pack};
 
 pub struct Revert<'a> {
+    rollup_context: RollupContext,
     finality_blocks: u64,
     reward_burn_rate: u8,
     prev_global_state: GlobalState,
@@ -38,7 +39,7 @@ pub struct RevertOutput {
 
 impl<'a> Revert<'a> {
     pub fn new(
-        rollup_context: &RollupContext,
+        rollup_context: RollupContext,
         prev_global_state: GlobalState,
         challenge_cell: &'a CellInfo,
         stake_cells: &'a [CellInfo],
@@ -49,6 +50,7 @@ impl<'a> Revert<'a> {
         let finality_blocks = rollup_context.rollup_config.finality_blocks().unpack();
 
         Revert {
+            rollup_context,
             finality_blocks,
             prev_global_state,
             challenge_cell,
@@ -94,11 +96,20 @@ impl<'a> Revert<'a> {
                 .count(block_count)
                 .build()
         };
-        let last_finalized_block_number = {
-            let number = first_reverted_block.number().unpack();
-            number
-                .saturating_sub(1)
-                .saturating_sub(self.finality_blocks)
+        let last_finalized_timepoint = if self
+            .rollup_context
+            .determine_global_state_version(first_reverted_block.number().unpack())
+            < 2
+        {
+            Timepoint::from_block_number(
+                first_reverted_block
+                    .number()
+                    .unpack()
+                    .saturating_sub(1)
+                    .saturating_sub(self.finality_blocks),
+            )
+        } else {
+            Timepoint::unset()
         };
         let running_status: u8 = Status::Running.into();
 
@@ -109,7 +120,7 @@ impl<'a> Revert<'a> {
             .block(block_merkle_state)
             .tip_block_hash(first_reverted_block.parent_block_hash())
             .tip_block_timestamp(self.revert_witness.new_tip_block.timestamp())
-            .last_finalized_block_number(last_finalized_block_number.pack())
+            .last_finalized_block_number(last_finalized_timepoint.full_value().pack())
             .reverted_block_root(self.post_reverted_block_root.pack())
             .status(running_status.into())
             .build();

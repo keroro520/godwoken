@@ -446,7 +446,7 @@ impl Challenger {
         let burn_lock = self.config.challenger_config.burn_lock.clone().into();
 
         let revert = Revert::new(
-            &self.rollup_context,
+            self.rollup_context.clone(),
             prev_state,
             &challenge_cell,
             &stake_cells,

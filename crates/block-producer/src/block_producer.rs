@@ -22,6 +22,8 @@ use gw_mem_pool::{
 };
 use gw_rpc_client::{contract::ContractsCellDepManager, rpc_client::RPCClient};
 use gw_store::Store;
+use gw_types::core::Timepoint;
+use gw_types::offchain::{global_state_from_slice, CompatibleFinalizedTimepoint};
 use gw_types::{
     bytes::Bytes,
     offchain::{DepositInfo, InputCellInfo, RollupContext},
@@ -32,8 +34,9 @@ use gw_types::{
     prelude::*,
 };
 use gw_utils::{
-    fee::fill_tx_fee_with_local, genesis_info::CKBGenesisInfo, local_cells::LocalCellsManager,
-    query_rollup_cell, since::Since, transaction_skeleton::TransactionSkeleton, wallet::Wallet,
+    fee::fill_tx_fee_with_local, genesis_info::CKBGenesisInfo, get_confirmed_header_timestamp,
+    local_cells::LocalCellsManager, query_l1_header_by_timestamp, query_rollup_cell, since::Since,
+    transaction_skeleton::TransactionSkeleton, wallet::Wallet,
 };
 use std::{collections::HashSet, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
@@ -48,9 +51,17 @@ fn generate_custodian_cells(
     deposit_cells: &[DepositInfo],
 ) -> Vec<(CellOutput, Bytes)> {
     let block_hash: H256 = block.hash().into();
-    let block_number = block.raw().number().unpack();
+    let block_timepoint = {
+        let block_number = block.raw().number().unpack();
+        if rollup_context.determine_global_state_version(block_number) < 2 {
+            Timepoint::from_block_number(block_number)
+        } else {
+            let block_timestamp = block.raw().timestamp().unpack();
+            Timepoint::from_timestamp(block_timestamp)
+        }
+    };
     let to_custodian = |deposit| -> _ {
-        to_custodian_cell(rollup_context, &block_hash, block_number, deposit)
+        to_custodian_cell(rollup_context, &block_hash, &block_timepoint, deposit)
             .expect("sanitized deposit")
     };
 
@@ -157,10 +168,24 @@ impl BlockProducer {
             let smt = db.reverted_block_smt()?;
             smt.root().to_owned()
         };
+
+        // By applying finality mechanism based on L1 timestamp, we assign the L1 timestamp,
+        // obtained from a L1 header_dep, to GlobalState.last_finalized_timepoint.
+        //
+        // But L1 chain rollback makes things difficult. It must be a relation between
+        // GlobalState or l2block and L1 header_dep, while L1 rollback, the relation should
+        // be updated in time.
+        //
+        // Currently, we choose a L1 confirmed block header to be L1 header_dep, to avoid
+        // rollback.
+        let l1_confirmed_header_timestamp =
+            get_confirmed_header_timestamp(&self.rpc_client).await?;
+
         let param = ProduceBlockParam {
             stake_cell_owner_lock_hash: self.wallet.lock_script().hash().into(),
             reverted_block_root,
             rollup_config_hash: self.rollup_config_hash,
+            l1_confirmed_header_timestamp,
             block_param,
         };
         let db = self.store.begin_transaction();
@@ -220,6 +245,33 @@ impl BlockProducer {
         tx_skeleton
             .cell_deps_mut()
             .push(contracts_dep.omni_lock.clone().into());
+        // header_deps, used for obtaining l1 time in the state-validator-script
+        let block_number = block.raw().number().unpack();
+        if 2 <= rollup_context.determine_global_state_version(block_number) {
+            let finality_as_duration = rollup_context.rollup_config.finality_as_duration();
+            let last_finalized_timestamp = match Timepoint::from_full_value(
+                global_state.last_finalized_block_number().unpack(),
+            ) {
+                Timepoint::Timestamp(last_finalized_timestamp) => last_finalized_timestamp,
+                Timepoint::BlockNumber(_) => {
+                    unreachable!("2 <= global_state_version, last_finalized_timepoint should be timestamp-based");
+                }
+            };
+            let l1_confirmed_timestamp =
+                last_finalized_timestamp.saturating_add(finality_as_duration);
+            let l1_confirmed_header =
+                query_l1_header_by_timestamp(&self.rpc_client, l1_confirmed_timestamp)
+                    .await?
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "get_l1_header_by_timestamp l1_timestamp={}, l2block={:#x}",
+                            l1_confirmed_timestamp, block_number
+                        )
+                    });
+            tx_skeleton
+                .header_deps_mut()
+                .push(ckb_types::prelude::Unpack::unpack(&l1_confirmed_header.hash()).pack());
+        }
 
         // Package pending revert withdrawals and custodians
         let db = { self.chain.lock().await.store().begin_transaction() };
@@ -321,16 +373,17 @@ impl BlockProducer {
             .outputs_mut()
             .push((generated_stake.output, generated_stake.output_data));
 
-        let last_finalized_block_number = self
-            .generator
-            .rollup_context()
-            .last_finalized_block_number(block.raw().number().unpack() - 1);
+        let prev_global_state = global_state_from_slice(&rollup_cell.data)?;
+        let prev_compatible_finalized_timepoint = CompatibleFinalizedTimepoint::from_global_state(
+            &prev_global_state,
+            rollup_context.rollup_config.finality_blocks().unpack(),
+        );
         let finalized_custodians = gw_mem_pool::custodian::query_finalized_custodians(
             rpc_client,
             &self.store.get_snapshot(),
             withdrawal_extras.iter().map(|w| w.request()),
             rollup_context,
-            last_finalized_block_number,
+            &prev_compatible_finalized_timepoint,
             local_cells_manager,
         )
         .await?
@@ -339,7 +392,7 @@ impl BlockProducer {
             local_cells_manager,
             rpc_client,
             finalized_custodians,
-            last_finalized_block_number,
+            &prev_compatible_finalized_timepoint,
         )
         .await?
         .expect_any();

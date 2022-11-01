@@ -82,6 +82,11 @@ impl CKBClient {
         Ok(block)
     }
 
+    pub async fn get_tip_header(&self) -> Result<ckb_jsonrpc_types::HeaderView> {
+        let tip_header = self.request("get_tip_header", None).await?;
+        Ok(tip_header)
+    }
+
     /// Get transaction with status.
     pub async fn get_transaction_with_status(
         &self,

@@ -27,6 +27,7 @@ use gw_types::{
     },
     prelude::{Builder as GWBuilder, Entity as GWEntity, Pack as GWPack, Unpack as GWUnpack},
 };
+use gw_utils::calc_finalizing_range;
 use std::{collections::HashSet, convert::TryFrom, sync::Arc, time::Instant};
 use tokio::sync::Mutex;
 use tracing::instrument;
@@ -139,7 +140,7 @@ impl LocalState {
 
 pub struct Chain {
     rollup_type_script_hash: [u8; 32],
-    rollup_config_hash: [u8; 32],
+    rollup_config: RollupConfig,
     store: Store,
     challenge_target: Option<ChallengeTarget>,
     last_sync_event: SyncEvent,
@@ -151,7 +152,7 @@ pub struct Chain {
 
 impl Chain {
     pub fn create(
-        rollup_config: &RollupConfig,
+        rollup_config: RollupConfig,
         rollup_type_script: &Script,
         config: &ChainConfig,
         store: Store,
@@ -160,7 +161,7 @@ impl Chain {
     ) -> Result<Self> {
         // convert serde types to gw-types
         assert_eq!(
-            rollup_config,
+            &rollup_config,
             &generator.rollup_context().rollup_config,
             "check generator rollup config"
         );
@@ -178,7 +179,6 @@ impl Chain {
             tip,
             last_global_state,
         };
-        let rollup_config_hash = rollup_config.hash();
         let skipped_invalid_block_list = config
             .skipped_invalid_block_list
             .iter()
@@ -196,7 +196,7 @@ impl Chain {
             generator,
             mem_pool,
             rollup_type_script_hash,
-            rollup_config_hash,
+            rollup_config,
             skipped_invalid_block_list,
         })
     }
@@ -218,8 +218,8 @@ impl Chain {
         &self.generator
     }
 
-    pub fn rollup_config_hash(&self) -> &[u8; 32] {
-        &self.rollup_config_hash
+    pub fn rollup_config_hash(&self) -> [u8; 32] {
+        self.rollup_config.hash()
     }
 
     pub fn rollup_type_script_hash(&self) -> &[u8; 32] {
@@ -571,6 +571,11 @@ impl Chain {
         Ok(())
     }
 
+    /// Calculate and store the finalized_custodian_capacity for block block_number.
+    ///
+    /// Initialize by the block parent's finalized_custodian_capacity;
+    /// increase with finalizing deposit requests after applying this block;
+    /// decrease with the block's withdrawals.
     pub fn calculate_and_store_finalized_custodians(
         &mut self,
         db: &StoreTransaction,
@@ -579,37 +584,44 @@ impl Chain {
         let block_hash = db
             .get_block_hash_by_number(block_number)?
             .context("get block hash")?;
-        let withdrawals = db
-            .get_block(&block_hash)?
-            .context("get block")?
-            .withdrawals();
+        let finalizing_range = db
+            .get_block_finalizing_range(&block_hash)
+            .context("get block finalizing range")?;
+        let finalizing_from_number: u64 = finalizing_range.from_block_number().unpack();
+        let finalizing_to_number: u64 = finalizing_range.to_block_number().unpack();
+        if finalizing_from_number == finalizing_to_number {
+            return Ok(());
+        }
 
         let mut finalized_custodians = db
             .get_block_post_finalized_custodian_capacity(block_number - 1)
             .context("get parent block remaining finalized custodians")?
             .as_reader()
             .unpack();
-        let last_finalized_block = self
-            .generator
-            .rollup_context()
-            .last_finalized_block_number(block_number - 1);
-        let deposits = db
-            .get_block_deposit_info_vec(last_finalized_block)
-            .context("get last finalized block deposit")?;
-        for deposit in deposits {
-            let deposit = deposit.request();
-            finalized_custodians.capacity = finalized_custodians
-                .capacity
-                .checked_add(deposit.capacity().unpack().into())
-                .context("add capacity overflow")?;
-            finalized_custodians
-                .checked_add_sudt(
-                    deposit.sudt_script_hash().unpack(),
-                    deposit.amount().unpack(),
-                    deposit.script(),
-                )
-                .context("add sudt overflow")?;
+        for finalizing_number in finalizing_from_number + 1..finalizing_to_number + 1 {
+            let deposits = db
+                .get_block_deposit_info_vec(finalizing_number)
+                .context("get finalizing block deposit info vec")?;
+            for deposit in deposits {
+                let deposit = deposit.request();
+                finalized_custodians.capacity = finalized_custodians
+                    .capacity
+                    .checked_add(deposit.capacity().unpack().into())
+                    .context("add capacity overflow")?;
+                finalized_custodians
+                    .checked_add_sudt(
+                        deposit.sudt_script_hash().unpack(),
+                        deposit.amount().unpack(),
+                        deposit.script(),
+                    )
+                    .context("add sudt overflow")?;
+            }
         }
+
+        let withdrawals = db
+            .get_block(&block_hash)?
+            .context("get block")?
+            .withdrawals();
         for w in withdrawals.as_reader().iter() {
             finalized_custodians.capacity = finalized_custodians
                 .capacity
@@ -624,6 +636,7 @@ impl Chain {
                     .context("withdrawal not enough sudt amount")?;
             }
         }
+
         db.set_block_post_finalized_custodian_capacity(
             block_number,
             &finalized_custodians.pack().as_reader(),
@@ -1045,6 +1058,12 @@ impl Chain {
         )?;
         db.insert_asset_scripts(deposit_asset_scripts)?;
         db.attach_block(l2block.clone())?;
+
+        {
+            let finalizing_range = calc_finalizing_range(&self.rollup_config, db, &l2block)?;
+            db.set_block_finalizing_range(&l2block.hash().into(), &finalizing_range.as_reader())?;
+        }
+
         self.local_state.tip = l2block;
         self.local_state.last_global_state = global_state;
         Ok(None)

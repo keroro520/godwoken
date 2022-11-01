@@ -300,6 +300,7 @@ impl BaseInitComponents {
                 let rollup_script_hash: [u8; 32] = config.genesis.rollup_type_hash.clone().into();
                 rollup_script_hash.into()
             },
+            timestamp_based_finality_fork_block: Some(config.fork_blocks.timestamp_based_finality),
         };
         let rollup_type_script: Script = config.chain.rollup_type_script.clone().into();
         let rpc_client = {
@@ -574,7 +575,7 @@ pub async fn run(config: Config, skip_config_check: bool) -> Result<()> {
     }
     let chain = Arc::new(Mutex::new(
         Chain::create(
-            &rollup_config,
+            rollup_config.clone(),
             &config.chain.rollup_type_script.clone().into(),
             &config.chain,
             store.clone(),
