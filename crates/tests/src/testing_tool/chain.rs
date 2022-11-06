@@ -463,6 +463,7 @@ pub fn chain_generator(chain: &Chain, rollup_type_script: Script) -> Arc<Generat
     let rollup_context = RollupContext {
         rollup_script_hash: rollup_type_script.hash().into(),
         rollup_config,
+        ..Default::default()
     };
     Arc::new(Generator::new(
         backend_manage,
@@ -499,6 +500,7 @@ pub async fn setup_chain_with_account_lock_manage(
     let rollup_context = RollupContext {
         rollup_script_hash: rollup_script_hash.into(),
         rollup_config: rollup_config.clone(),
+        ..Default::default()
     };
     let generator = Arc::new(Generator::new(
         backend_manage,
@@ -519,7 +521,7 @@ pub async fn setup_chain_with_account_lock_manage(
     };
     let mem_pool = MemPool::create(args).await.unwrap();
     Chain::create(
-        &rollup_config,
+        rollup_config.clone(),
         &rollup_type_script,
         &ChainConfig::default(),
         store,
@@ -615,7 +617,7 @@ pub async fn construct_block_with_timestamp(
     let stake_cell_owner_lock_hash = H256::zero();
     let db = &chain.store().begin_transaction();
     let generator = chain.generator();
-    let rollup_config_hash = (*chain.rollup_config_hash()).into();
+    let rollup_config_hash = chain.rollup_config_hash().into();
 
     let provider = DummyMemPoolProvider {
         deposit_cells: deposit_info_vec.unpack(),
@@ -636,10 +638,12 @@ pub async fn construct_block_with_timestamp(
     let remaining_capacity = mem_block.take_finalized_custodians_capacity();
     let block_param = generate_produce_block_param(chain.store(), mem_block, post_merkle_state)?;
     let reverted_block_root = db.get_reverted_block_smt_root().unwrap();
+    let l1_confirmed_header_timestamp = 0;
     let param = ProduceBlockParam {
         stake_cell_owner_lock_hash,
         rollup_config_hash,
         reverted_block_root,
+        l1_confirmed_header_timestamp,
         block_param,
     };
     produce_block(db, generator, param).map(|mut r| {

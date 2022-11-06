@@ -146,6 +146,7 @@ impl BenchExecutionEnvironment {
         let rollup_context = RollupContext {
             rollup_config: genesis_config.rollup_config.clone().into(),
             rollup_script_hash: ROLLUP_TYPE_HASH.into(),
+            ..Default::default()
         };
 
         let backend_manage = {

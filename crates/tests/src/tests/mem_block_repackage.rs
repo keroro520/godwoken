@@ -78,12 +78,14 @@ async fn test_repackage_mem_block() {
         let smt = db.reverted_block_smt().unwrap();
         smt.root().to_owned()
     };
+    let l1_confirmed_header_timestamp = 0;
     let param = ProduceBlockParam {
         stake_cell_owner_lock_hash: random_always_success_script(&rollup_script_hash)
             .hash()
             .into(),
         reverted_block_root,
         rollup_config_hash: rollup_context.rollup_config.hash().into(),
+        l1_confirmed_header_timestamp,
         block_param,
     };
     let store = chain.store();
