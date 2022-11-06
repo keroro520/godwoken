@@ -19,6 +19,7 @@ use gw_store::{
     transaction::StoreTransaction,
     Store,
 };
+use gw_types::core::Timepoint;
 use gw_types::{
     core::Status,
     offchain::{BlockParam, DepositInfo, FinalizedCustodianCapacity},
@@ -43,6 +44,7 @@ pub struct ProduceBlockParam {
     pub stake_cell_owner_lock_hash: H256,
     pub reverted_block_root: H256,
     pub rollup_config_hash: H256,
+    pub l1_confirmed_header_timestamp: u64,
     pub block_param: BlockParam,
 }
 
@@ -60,6 +62,7 @@ pub fn produce_block(
         stake_cell_owner_lock_hash,
         reverted_block_root,
         rollup_config_hash,
+        l1_confirmed_header_timestamp,
         block_param:
             BlockParam {
                 number,
@@ -157,18 +160,26 @@ pub fn produce_block(
             .count(block_count.pack())
             .build()
     };
-    let last_finalized_block_number =
-        number.saturating_sub(rollup_context.rollup_config.finality_blocks().unpack());
+
+    let last_finalized_timepoint = if rollup_context.determine_global_state_version(number) < 2 {
+        let finality_as_blocks = rollup_context.rollup_config.finality_blocks().unpack();
+        Timepoint::from_block_number(number.saturating_sub(finality_as_blocks))
+    } else {
+        let finality_as_duration = rollup_context.rollup_config.finality_as_duration();
+        Timepoint::from_timestamp(
+            l1_confirmed_header_timestamp.saturating_sub(finality_as_duration),
+        )
+    };
     let global_state = GlobalState::new_builder()
         .account(post_merkle_state)
         .block(post_block)
         .tip_block_hash(block.hash().pack())
         .tip_block_timestamp(block.raw().timestamp())
-        .last_finalized_block_number(last_finalized_block_number.pack())
+        .last_finalized_block_number(last_finalized_timepoint.full_value().pack())
         .reverted_block_root(Into::<[u8; 32]>::into(reverted_block_root).pack())
         .rollup_config_hash(rollup_config_hash.pack())
         .status((Status::Running as u8).into())
-        .version(1u8.into())
+        .version(rollup_context.determine_global_state_version(number).into())
         .build();
     Ok(ProduceBlockResult {
         block,
