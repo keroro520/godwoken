@@ -5,20 +5,21 @@ use ckb_types::prelude::Reader;
 use ckb_types::prelude::{Builder, Entity};
 use gw_common::smt::Blake2bHasher;
 use gw_common::H256;
-use gw_types::core::Status;
+use gw_types::core::{Status, Timepoint};
 use gw_types::offchain::{CellInfo, RollupContext};
 use gw_types::packed::BlockMerkleState;
 use gw_types::packed::ChallengeLockArgsReader;
 use gw_types::packed::RawL2Block;
 use gw_types::packed::RollupRevert;
 use gw_types::packed::{
-    CellOutput, ChallengeLockArgs, GlobalState, RollupAction, RollupActionUnion, Script,
+    Byte32, CellOutput, ChallengeLockArgs, GlobalState, RollupAction, RollupActionUnion, Script,
     WitnessArgs,
 };
 use gw_types::prelude::Unpack;
 use gw_types::{bytes::Bytes, prelude::Pack};
 
 pub struct Revert<'a> {
+    rollup_context: RollupContext,
     finality_blocks: u64,
     reward_burn_rate: u8,
     prev_global_state: GlobalState,
@@ -27,6 +28,7 @@ pub struct Revert<'a> {
     burn_lock: Script,
     post_reverted_block_root: [u8; 32],
     revert_witness: RevertWitness,
+    l1_confirmed_header: gw_jsonrpc_types::ckb_jsonrpc_types::HeaderView,
 }
 
 pub struct RevertOutput {
@@ -34,21 +36,24 @@ pub struct RevertOutput {
     pub reward_cells: Vec<(CellOutput, Bytes)>,
     pub burn_cells: Vec<(CellOutput, Bytes)>,
     pub rollup_witness: WitnessArgs,
+    pub header_deps: Vec<Byte32>,
 }
 
 impl<'a> Revert<'a> {
     pub fn new(
-        rollup_context: &RollupContext,
+        rollup_context: RollupContext,
         prev_global_state: GlobalState,
         challenge_cell: &'a CellInfo,
         stake_cells: &'a [CellInfo],
         burn_lock: Script,
         revert_context: RevertContext,
+        l1_confirmed_header: gw_jsonrpc_types::ckb_jsonrpc_types::HeaderView,
     ) -> Self {
         let reward_burn_rate = rollup_context.rollup_config.reward_burn_rate().into();
         let finality_blocks = rollup_context.rollup_config.finality_blocks().unpack();
 
         Revert {
+            rollup_context,
             finality_blocks,
             prev_global_state,
             challenge_cell,
@@ -57,6 +62,7 @@ impl<'a> Revert<'a> {
             reward_burn_rate,
             post_reverted_block_root: revert_context.post_reverted_block_root.into(),
             revert_witness: revert_context.revert_witness,
+            l1_confirmed_header,
         }
     }
 
@@ -94,11 +100,20 @@ impl<'a> Revert<'a> {
                 .count(block_count)
                 .build()
         };
-        let last_finalized_block_number = {
-            let number = first_reverted_block.number().unpack();
-            number
-                .saturating_sub(1)
-                .saturating_sub(self.finality_blocks)
+        let last_finalized_timepoint = if self
+            .rollup_context
+            .determine_global_state_version(first_reverted_block.number().unpack())
+            < 2
+        {
+            Timepoint::from_block_number(
+                first_reverted_block
+                    .number()
+                    .unpack()
+                    .saturating_sub(1)
+                    .saturating_sub(self.finality_blocks),
+            )
+        } else {
+            Timepoint::from_timestamp(self.l1_confirmed_header.inner.timestamp.value())
         };
         let running_status: u8 = Status::Running.into();
 
@@ -109,7 +124,7 @@ impl<'a> Revert<'a> {
             .block(block_merkle_state)
             .tip_block_hash(first_reverted_block.parent_block_hash())
             .tip_block_timestamp(self.revert_witness.new_tip_block.timestamp())
-            .last_finalized_block_number(last_finalized_block_number.pack())
+            .last_finalized_block_number(last_finalized_timepoint.full_value().pack())
             .reverted_block_root(self.post_reverted_block_root.pack())
             .status(running_status.into())
             .build();
@@ -130,11 +145,14 @@ impl<'a> Revert<'a> {
             .output_type(Some(rollup_action.as_bytes()).pack())
             .build();
 
+        let header_deps = vec![self.l1_confirmed_header.hash.pack()];
+
         Ok(RevertOutput {
             post_global_state,
             reward_cells: rewards_output.reward_cells,
             burn_cells: rewards_output.burn_cells,
             rollup_witness,
+            header_deps,
         })
     }
 }
