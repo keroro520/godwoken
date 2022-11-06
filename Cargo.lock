@@ -2164,6 +2164,7 @@ dependencies = [
  "gw-rpc-client",
  "gw-store",
  "gw-types",
+ "lazy_static",
  "log",
  "rand 0.8.5",
  "secp256k1 0.21.3",

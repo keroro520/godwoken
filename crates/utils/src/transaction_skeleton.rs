@@ -5,8 +5,8 @@ use gw_types::{
     bytes::Bytes,
     offchain::{CellInfo, InputCellInfo},
     packed::{
-        CellDep, CellInput, CellOutput, OmniLockWitnessLock, OutPoint, RawTransaction, Transaction,
-        WitnessArgs,
+        Byte32, CellDep, CellInput, CellOutput, OmniLockWitnessLock, OutPoint, RawTransaction,
+        Transaction, WitnessArgs,
     },
     prelude::*,
 };
@@ -87,6 +87,7 @@ pub struct TransactionSkeleton {
     witnesses: Vec<WitnessArgs>,
     cell_outputs: Vec<(CellOutput, Bytes)>,
     omni_lock_code_hash: Option<[u8; 32]>,
+    header_deps: Vec<Byte32>,
 }
 
 impl TransactionSkeleton {
@@ -123,6 +124,10 @@ impl TransactionSkeleton {
 
     pub fn witnesses_mut(&mut self) -> &mut Vec<WitnessArgs> {
         &mut self.witnesses
+    }
+
+    pub fn header_deps_mut(&mut self) -> &mut Vec<Byte32> {
+        &mut self.header_deps
     }
 
     pub fn omni_lock_code_hash(&self) -> Option<&[u8; 32]> {
@@ -197,6 +202,7 @@ impl TransactionSkeleton {
             .outputs(outputs.pack())
             .outputs_data(outputs_data.pack())
             .cell_deps(self.cell_deps.clone().pack())
+            .header_deps(self.header_deps.clone().pack())
             .build();
 
         // build witnesses

@@ -2,6 +2,7 @@ use gw_common::{
     builtins::CKB_SUDT_ACCOUNT_ID, ckb_decimal::CKBCapacity, h256_ext::H256Ext, state::State, H256,
 };
 use gw_traits::CodeStore;
+use gw_types::core::Timepoint;
 use gw_types::{
     offchain::RollupContext,
     packed::{Script, WithdrawalRequestExtra},
@@ -61,11 +62,13 @@ impl<'a, S: State + CodeStore> WithdrawalVerifier<'a, S> {
             .ok_or(Error::Account(AccountError::UnknownAccount))?;
 
         // check capacity (use dummy block hash and number)
+        let dummy_block_number = 1;
+        let block_timepoint = Timepoint::from_block_number(dummy_block_number);
         build_withdrawal_cell_output(
             self.rollup_context,
             withdrawal,
             &H256::one(),
-            1,
+            &block_timepoint,
             asset_script,
         )?;
 

@@ -300,6 +300,7 @@ impl BaseInitComponents {
                 let rollup_script_hash: [u8; 32] = config.genesis.rollup_type_hash.clone().into();
                 rollup_script_hash.into()
             },
+            timestamp_based_finality_fork_block: config.fork_blocks.timestamp_based_finality,
         };
         let rollup_type_script: Script = config.chain.rollup_type_script.clone().into();
         let rpc_client = {
@@ -315,16 +316,23 @@ impl BaseInitComponents {
             )
         };
 
-        let opt_block_producer_config = config.block_producer.as_ref();
         let mut contracts_dep_manager = None;
-        if opt_block_producer_config.is_some() {
+        let opt_block_producer_config = config.block_producer.as_ref();
+        if let Some(block_producer_config) = opt_block_producer_config {
             use gw_rpc_client::contract::check_script;
             let script_config = config.consensus.contract_type_scripts.clone();
             let rollup_type_script = &config.chain.rollup_type_script;
+            let rollup_config_cell_dep = block_producer_config.rollup_config_cell_dep.clone();
 
             check_script(&script_config, &rollup_config, rollup_type_script)?;
-            contracts_dep_manager =
-                Some(ContractsCellDepManager::build(rpc_client.clone(), script_config).await?);
+            contracts_dep_manager = Some(
+                ContractsCellDepManager::build(
+                    rpc_client.clone(),
+                    script_config,
+                    rollup_config_cell_dep,
+                )
+                .await?,
+            );
         }
 
         if !skip_config_check {
@@ -574,7 +582,7 @@ pub async fn run(config: Config, skip_config_check: bool) -> Result<()> {
     }
     let chain = Arc::new(Mutex::new(
         Chain::create(
-            &rollup_config,
+            rollup_config.clone(),
             &config.chain.rollup_type_script.clone().into(),
             &config.chain,
             store.clone(),
