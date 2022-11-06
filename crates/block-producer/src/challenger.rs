@@ -39,6 +39,7 @@ use gw_utils::wallet::Wallet;
 use tokio::sync::Mutex;
 use tracing::instrument;
 
+use gw_utils::get_confirmed_header;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -451,13 +452,15 @@ impl Challenger {
         let prev_state = rollup_state.get_state().to_owned();
         let burn_lock = self.config.challenger_config.burn_lock.clone().into();
 
+        let l1_confirmed_header = get_confirmed_header(&self.rpc_client).await?;
         let revert = Revert::new(
-            &self.rollup_context,
+            self.rollup_context.clone(),
             prev_state,
             &challenge_cell,
             &stake_cells,
             burn_lock,
             context,
+            l1_confirmed_header,
         );
         let revert_output = revert.build_output()?;
 
@@ -482,6 +485,9 @@ impl Challenger {
         tx_skeleton.inputs_mut().push(rollup_state.rollup_input());
         tx_skeleton.outputs_mut().push(rollup_output);
         tx_skeleton.witnesses_mut().push(rollup_witness);
+        tx_skeleton
+            .header_deps_mut()
+            .extend(revert_output.header_deps);
 
         // Challenge
         let challenge_input = to_input_cell_info_with_since(challenge_cell, since);
