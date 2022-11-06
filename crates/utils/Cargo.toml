@@ -22,3 +22,4 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 ckb-types = "0.104.0"
 tokio = "1"
 zstd = "0.11.2"
+lazy_static = "1.4"
