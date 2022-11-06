@@ -1,3 +1,4 @@
+mod compatible_finalized_timepoint;
 mod error_receipt;
 mod exported_block;
 mod extension;
@@ -9,6 +10,7 @@ mod rpc;
 mod run_result;
 mod store;
 
+pub use compatible_finalized_timepoint::*;
 pub use error_receipt::*;
 pub use exported_block::*;
 pub use extension::global_state_from_slice;
