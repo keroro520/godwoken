@@ -58,6 +58,7 @@ pub async fn setup(args: SetupArgs) -> Result<Context> {
             let rollup_script_hash: [u8; 32] = config.genesis.rollup_type_hash.clone().into();
             rollup_script_hash.into()
         },
+        timestamp_based_finality_fork_block: config.fork_blocks.timestamp_based_finality,
     };
     let secp_data: Bytes = {
         let rpc_client = {
@@ -115,7 +116,7 @@ pub async fn setup(args: SetupArgs) -> Result<Context> {
     };
 
     let chain = Chain::create(
-        &rollup_config,
+        rollup_config.clone(),
         &rollup_type_script,
         &config.chain,
         local_store.clone(),

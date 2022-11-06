@@ -25,6 +25,8 @@ pub struct Config {
     #[serde(default)]
     pub contract_log_config: ContractLogConfig,
     pub backend_switches: Vec<BackendSwitchConfig>,
+    #[serde(default)]
+    pub fork_blocks: ForkBlocksConfig,
     pub genesis: GenesisConfig,
     pub chain: ChainConfig,
     pub rpc_client: RPCClientConfig,
@@ -141,6 +143,7 @@ pub struct ContractTypeScriptConfig {
 
 #[derive(Clone, Debug, Default)]
 pub struct ContractsCellDep {
+    pub rollup_config: CellDep,
     pub rollup_cell_type: CellDep,
     pub deposit_cell_lock: CellDep,
     pub stake_cell_lock: CellDep,
@@ -263,6 +266,19 @@ pub struct BackendConfig {
     pub generator_path: PathBuf,
     pub validator_script_type_hash: H256,
     pub backend_type: BackendType,
+}
+
+/// Hard-fork changes and activation heights.
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForkBlocksConfig {
+    /// Fork change: use L1 timestamp to check finality. See also
+    /// https://talk.nervos.org/t/optimize-godwoken-finality-and-on-chain-cost/6739
+    ///
+    /// Version: v1 => v2
+    ///
+    /// `None` disables this fork change, by default;
+    /// `Some<u64>` indicates the activation height for the fork change.
+    pub timestamp_based_finality: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
