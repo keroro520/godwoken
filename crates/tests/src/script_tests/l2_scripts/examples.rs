@@ -1,5 +1,6 @@
 use crate::script_tests::l2_scripts::SUDT_TOTAL_SUPPLY_PROGRAM_PATH;
 use crate::testing_tool::chain::ALWAYS_SUCCESS_CODE_HASH;
+use std::sync::Arc;
 
 use super::{
     new_block_info, DummyChainStore, SudtLog, SudtLogType, ACCOUNT_OP_PROGRAM_CODE_HASH,
@@ -92,7 +93,7 @@ fn test_example_sum() {
         .unwrap();
         let mut account_lock_manage = AccountLockManage::default();
         account_lock_manage
-            .register_lock_algorithm(H256::zero(), Box::new(AlwaysSuccess::default()));
+            .register_lock_algorithm(H256::zero(), Arc::new(AlwaysSuccess::default()));
         let rollup_context = RollupContext {
             rollup_config: Default::default(),
             rollup_script_hash: [42u8; 32].into(),
@@ -235,7 +236,7 @@ fn test_example_account_operation() {
     }])
     .unwrap();
     let mut account_lock_manage = AccountLockManage::default();
-    account_lock_manage.register_lock_algorithm(H256::zero(), Box::new(AlwaysSuccess::default()));
+    account_lock_manage.register_lock_algorithm(H256::zero(), Arc::new(AlwaysSuccess::default()));
     let rollup_context = RollupContext {
         rollup_config: RollupConfig::new_builder()
             .allowed_contract_type_hashes(
@@ -529,7 +530,7 @@ fn test_example_recover_account() {
     let mut account_lock_manage = AccountLockManage::default();
     let secp256k1_code_hash = H256::from_u32(11);
     account_lock_manage
-        .register_lock_algorithm(secp256k1_code_hash, Box::new(Secp256k1Eth::default()));
+        .register_lock_algorithm(secp256k1_code_hash, Arc::new(Secp256k1Eth::default()));
     let rollup_script_hash: H256 = [42u8; 32].into();
     let rollup_context = RollupContext {
         rollup_config: RollupConfig::new_builder()
@@ -729,7 +730,7 @@ fn test_sudt_total_supply() {
         let mut account_lock_manage = AccountLockManage::default();
         account_lock_manage.register_lock_algorithm(
             (*ALWAYS_SUCCESS_CODE_HASH).into(),
-            Box::new(AlwaysSuccess::default()),
+            Arc::new(AlwaysSuccess::default()),
         );
         let rollup_context = RollupContext {
             rollup_config,
