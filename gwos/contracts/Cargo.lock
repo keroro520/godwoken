@@ -6,14 +6,14 @@ version = 3
 name = "always-success"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std 0.7.4",
 ]
 
 [[package]]
 name = "blake2b-ref"
-version = "0.2.1"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95916998c798756098a4eb1b3f2cd510659705a9817bf203d61abd30fbec3e7b"
+checksum = "294d17c72e0ba59fad763caa112368d0672083779cdebbb97164f4bb4c1e339a"
 
 [[package]]
 name = "blake2b-rs"
@@ -106,12 +106,33 @@ dependencies = [
 
 [[package]]
 name = "ckb-standalone-types"
+version = "0.0.1-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af2cdbdf65ee5b1da71504f5a03d6984bce77d0b4b46daff63f4ba4a3b0eef08"
+dependencies = [
+ "cfg-if 0.1.10",
+ "molecule 0.6.1",
+]
+
+[[package]]
+name = "ckb-standalone-types"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22d7cbbdab96e6b809a102cf88bfec28795a0a3c06bfdea4abe4de89777801cd"
 dependencies = [
  "cfg-if 1.0.0",
- "molecule",
+ "molecule 0.7.2",
+]
+
+[[package]]
+name = "ckb-std"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5247e68ff32c17714105e2460db6113fb99efde8c830bbdd99f8bf715100dd64"
+dependencies = [
+ "buddy-alloc",
+ "cc",
+ "ckb-standalone-types 0.0.1-pre.1",
 ]
 
 [[package]]
@@ -122,7 +143,7 @@ checksum = "e5761f11372e794d77b8e8a8059b22c5d6ccef907588dd5302a669f056ecce6b"
 dependencies = [
  "buddy-alloc",
  "cc",
- "ckb-standalone-types",
+ "ckb-standalone-types 0.1.2",
  "cstr_core",
 ]
 
@@ -258,8 +279,8 @@ dependencies = [
 
 [[package]]
 name = "gw-common"
-version = "0.1.0"
-source = "git+https://github.com/nervosnetwork/godwoken.git?rev=91c324544424292b4d715ce376d31bc45aa3cb5d#91c324544424292b4d715ce376d31bc45aa3cb5d"
+version = "1.7.0-rc2"
+source = "git+https://github.com/keroro520/godwoken.git?branch=new-finality-rule-based-on-timestamp#20348314cfef0b0d61431bd953c1a1ec1928cd88"
 dependencies = [
  "cfg-if 0.1.10",
  "gw-hash",
@@ -270,8 +291,8 @@ dependencies = [
 
 [[package]]
 name = "gw-hash"
-version = "0.1.0"
-source = "git+https://github.com/nervosnetwork/godwoken.git?rev=91c324544424292b4d715ce376d31bc45aa3cb5d#91c324544424292b4d715ce376d31bc45aa3cb5d"
+version = "1.7.0-rc2"
+source = "git+https://github.com/keroro520/godwoken.git?branch=new-finality-rule-based-on-timestamp#20348314cfef0b0d61431bd953c1a1ec1928cd88"
 dependencies = [
  "blake2b-ref",
 ]
@@ -286,12 +307,12 @@ dependencies = [
 
 [[package]]
 name = "gw-types"
-version = "0.1.0"
-source = "git+https://github.com/nervosnetwork/godwoken.git?rev=91c324544424292b4d715ce376d31bc45aa3cb5d#91c324544424292b4d715ce376d31bc45aa3cb5d"
+version = "1.7.0-rc2"
+source = "git+https://github.com/keroro520/godwoken.git?branch=new-finality-rule-based-on-timestamp#20348314cfef0b0d61431bd953c1a1ec1928cd88"
 dependencies = [
  "cfg-if 0.1.10",
  "gw-hash",
- "molecule",
+ "molecule 0.7.2",
  "primitive-types",
  "sparse-merkle-tree",
 ]
@@ -300,7 +321,7 @@ dependencies = [
 name = "gw-utils"
 version = "0.1.0"
 dependencies = [
- "ckb-std",
+ "ckb-std 0.9.0",
  "gw-common",
  "gw-types",
 ]
@@ -346,6 +367,15 @@ name = "merkle-cbt"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f1ac8428ec02d6caa5a79c15e851d84d5dc7a00df0429a8aa860d104f0a81be"
+dependencies = [
+ "cfg-if 0.1.10",
+]
+
+[[package]]
+name = "molecule"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3067ceba3d7f5dcc7427cfc584fc506e756f1161151032fec840455f5a3c2fd5"
 dependencies = [
  "cfg-if 0.1.10",
 ]
