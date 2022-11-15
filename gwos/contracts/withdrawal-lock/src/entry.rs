@@ -38,7 +38,7 @@ use crate::ckb_std::{
 
 use crate::error::Error;
 
-const FINALIZED_BLOCK_NUMBER: u64 = 0;
+const FINALIZED_BLOCK_TIMEPOINT: u64 = 0;
 const FINALIZED_BLOCK_HASH: [u8; 32] = [0u8; 32];
 
 struct ParsedLockArgs {
@@ -138,8 +138,8 @@ pub fn main() -> Result<(), Error> {
             };
             let custodian_deposit_block_hash: [u8; 32] =
                 custodian_lock_args.deposit_block_hash().unpack();
-            let custodian_deposit_block_number: u64 =
-                custodian_lock_args.deposit_block_number().unpack();
+            let custodian_deposit_block_timepoint : u64 =
+                custodian_lock_args.deposit_block_timepoint().unpack();
             let global_state = search_rollup_state(&rollup_type_hash, Source::Input)?
                 .ok_or(Error::RollupCellNotFound)?;
             let config = load_rollup_config(&global_state.rollup_config_hash().unpack())?;
@@ -147,7 +147,7 @@ pub fn main() -> Result<(), Error> {
                 != config.custodian_script_type_hash().as_slice()
                 || custodian_lock.hash_type() != ScriptHashType::Type.into()
                 || custodian_deposit_block_hash != FINALIZED_BLOCK_HASH
-                || custodian_deposit_block_number != FINALIZED_BLOCK_NUMBER
+                || custodian_deposit_block_timepoint != FINALIZED_BLOCK_TIMEPOINT
             {
                 return Err(Error::InvalidOutput);
             }
@@ -172,7 +172,7 @@ pub fn main() -> Result<(), Error> {
             let is_finalized = is_finalized(
                 &config,
                 &global_state,
-                &Timepoint::from_full_value(lock_args.withdrawal_block_number().unpack()),
+                &Timepoint::from_full_value(lock_args.withdrawal_block_timepoint().unpack()),
             );
             if !is_finalized {
                 return Err(Error::NotFinalized);

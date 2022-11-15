@@ -84,7 +84,7 @@ fn check_withdrawal_cells<'a>(
         } else {
             Timepoint::from_timestamp(context.timestamp)
         };
-        if cell.args.withdrawal_block_number().unpack() != expected_timepoint.full_value() {
+        if cell.args.withdrawal_block_timepoint().unpack() != expected_timepoint.full_value() {
             debug!("withdrawal cell mismatch timepoint");
             return Err(Error::InvalidWithdrawalCell);
         }
@@ -137,7 +137,7 @@ fn check_input_custodian_cells(
                 is_finalized(
                     config,
                     prev_global_state,
-                    &Timepoint::from_full_value(cell.args.deposit_block_number().unpack()),
+                    &Timepoint::from_full_value(cell.args.deposit_block_timepoint().unpack()),
                 )
             });
     // check unfinalized custodian cells == reverted deposit requests
@@ -186,11 +186,11 @@ fn check_output_custodian_cells(
                 is_finalized(
                     config,
                     prev_global_state,
-                    &Timepoint::from_full_value(cell.args.deposit_block_number().unpack()),
+                    &Timepoint::from_full_value(cell.args.deposit_block_timepoint().unpack()),
                 )
             });
     // check deposits request cells == unfinalized custodian cells
-    // check l2block's timepoint == unfinalized custodian cells' deposit_block_number
+    // check l2block's timepoint == unfinalized custodian cells' deposit_block_timepoint
     // check l2block's block_hash == unfinalized custodian cells' deposit_block_hash
     let expected_timepoint = if context.post_version < 2 {
         Timepoint::from_block_number(context.number)
@@ -203,7 +203,7 @@ fn check_output_custodian_cells(
             .position(|cell| {
                 custodian_cell.args.deposit_lock_args() == cell.args
                     && custodian_cell.args.deposit_block_hash() == context.block_hash.pack()
-                    && custodian_cell.args.deposit_block_number().unpack()
+                    && custodian_cell.args.deposit_block_timepoint().unpack()
                         == expected_timepoint.full_value()
                     && custodian_cell.value == cell.value
             })
@@ -577,7 +577,7 @@ fn verify_block_producer(
         let expected_stake_lock_args = input_stake_cell
             .args
             .as_builder()
-            .stake_block_number(expected_timepoint.full_value().pack())
+            .stake_block_timepoint(expected_timepoint.full_value().pack())
             .build();
         if expected_stake_lock_args != output_stake_cell.args
             || input_stake_cell.capacity > output_stake_cell.capacity
