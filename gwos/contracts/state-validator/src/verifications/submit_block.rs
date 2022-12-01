@@ -772,11 +772,18 @@ fn check_block_timestamp(
     if Fork::enforce_block_timestamp_in_l1_backbone_range(post_version) {
         // 4 hours, 4 * 60 * 60 * 1000 = 14400000ms
         const BACKBONE_BIAS: u64 = 14400000;
-        let backbone = post_global_state.last_finalized_block_number().unpack()
-            + finality_time_in_ms(rollup_config);
+        let backbone = {
+            match Timepoint::from_full_value(post_global_state.last_finalized_block_number().unpack()) {
+                Timepoint::BlockNumber(_) => unreachable!(),
+                Timepoint::Timestamp(ts) => {
+                    ts + finality_time_in_ms(rollup_config)
+                }
+            }
+        };
         if !(backbone.saturating_sub(BACKBONE_BIAS) <= block_timestamp
             && block_timestamp <= backbone.saturating_add(BACKBONE_BIAS))
         {
+             // ckb_script::verify  script group: Byte32(0x1af8540735a988f2485e582423ecbfb5a383b37f17924e5d9e2e839793f41096) DEBUG OUTPUT: [check_block_timestamp] block.timestamp is out of available range, block.timestamp: 1669803997002, backbone range: [9223373706658772810-14400000, 9223373706658772810+14400000]
             debug!(
                 "[check_block_timestamp] block.timestamp is out of available range, block.timestamp: {}, backbone range: [{}-{}, {}+{}]",
                 block_timestamp,
